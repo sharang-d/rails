@@ -5,7 +5,7 @@ require "models/post"
 require "models/comment"
 
 module ActiveRecord
-  module ArrayDelegationTests
+  module DelegationTests
     ARRAY_DELEGATES = [
       :+, :-, :|, :&, :[], :shuffle,
       :all?, :collect, :compact, :detect, :each, :each_cons, :each_with_index,
@@ -21,25 +21,14 @@ module ActiveRecord
         assert_respond_to target, method
       end
     end
-  end
 
-  module DeprecatedArelDelegationTests
-    AREL_METHODS = [
-      :with, :orders, :froms, :project, :projections, :taken, :constraints, :exists, :locked, :where_sql,
-      :ast, :source, :join_sources, :to_dot, :create_insert, :create_true, :create_false
-    ]
-
-    def test_deprecate_arel_delegation
-      AREL_METHODS.each do |method|
-        assert_deprecated { target.public_send(method) }
-        assert_deprecated { target.public_send(method) }
-      end
+    def test_not_respond_to_arel_method
+      assert_not_respond_to target, :exists
     end
   end
 
   class DelegationAssociationTest < ActiveRecord::TestCase
-    include ArrayDelegationTests
-    include DeprecatedArelDelegationTests
+    include DelegationTests
 
     def target
       Post.new.comments
@@ -47,8 +36,7 @@ module ActiveRecord
   end
 
   class DelegationRelationTest < ActiveRecord::TestCase
-    include ArrayDelegationTests
-    include DeprecatedArelDelegationTests
+    include DelegationTests
 
     def target
       Comment.all

@@ -16,6 +16,8 @@ A key difference to how Active Storage works compared to other attachment soluti
 
 Run `rails active_storage:install` to copy over active_storage migrations.
 
+NOTE: If the task cannot be found, verify that `require "active_storage/engine"` is present in `config/application.rb`.
+
 ## Examples
 
 One attachment:
@@ -99,7 +101,7 @@ Variation of image attachment:
 
 ```erb
 <%# Hitting the variant URL will lazy transform the original blob and then redirect to its new service location %>
-<%= image_tag user.avatar.variant(resize_to_fit: [100, 100]) %>
+<%= image_tag user.avatar.variant(resize_to_limit: [100, 100]) %>
 ```
 
 ## Direct uploads
@@ -116,8 +118,7 @@ Active Storage, with its included JavaScript library, supports uploading directl
     ```
     Using the npm package:
     ```js
-    import * as ActiveStorage from "activestorage"
-    ActiveStorage.start()
+    require("@rails/activestorage").start()
     ```
 2. Annotate file inputs with the direct upload URL.
 

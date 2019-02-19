@@ -226,9 +226,8 @@ module ActionView
 
         template_paths.map do |template|
           handler, format, variant = extract_handler_and_format_and_variant(template)
-          contents = File.binread(template)
 
-          Template.new(contents, File.expand_path(template), handler,
+          FileTemplate.new(File.expand_path(template), handler,
             virtual_path: path.virtual,
             format: format,
             variant: variant,
@@ -378,7 +377,7 @@ module ActionView
           # This regex match does double duty of finding only files which match
           # details (instead of just matching the prefix) and also filtering for
           # case-insensitive file systems.
-          !filename.match(regex) ||
+          !regex.match?(filename) ||
             File.directory?(filename)
         end.sort_by do |filename|
           # Because we scanned the directory, instead of checking for files

@@ -50,8 +50,12 @@ module ActiveRecord
       assert_equal [chef], chefs.to_a
     end
 
-    def test_where_with_casted_value_is_nil
-      assert_equal 4, Topic.where(last_read: "").count
+    def test_where_with_invalid_value
+      topics(:first).update!(written_on: nil, bonus_time: nil, last_read: nil)
+      assert_empty Topic.where(parent_id: Object.new)
+      assert_empty Topic.where(written_on: "")
+      assert_empty Topic.where(bonus_time: "")
+      assert_empty Topic.where(last_read: "")
     end
 
     def test_rewhere_on_root
@@ -357,6 +361,16 @@ module ActiveRecord
       params = protected_params.new(name: author.name)
       assert_raises(ActiveModel::ForbiddenAttributesError) { Author.where(params) }
       assert_equal author, Author.where(params.permit!).first
+    end
+
+    def test_where_with_large_number
+      assert_equal [authors(:bob)], Author.where(id: [3, 9223372036854775808])
+      assert_equal [authors(:bob)], Author.where(id: 3..9223372036854775808)
+    end
+
+    def test_to_sql_with_large_number
+      assert_equal [authors(:bob)], Author.find_by_sql(Author.where(id: [3, 9223372036854775808]).to_sql)
+      assert_equal [authors(:bob)], Author.find_by_sql(Author.where(id: 3..9223372036854775808).to_sql)
     end
 
     def test_where_with_unsupported_arguments

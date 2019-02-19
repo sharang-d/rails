@@ -96,11 +96,13 @@ module ActiveRecord
       # When running callbacks is not needed for each record update,
       # it is preferred to use {update_all}[rdoc-ref:Relation#update_all]
       # for updating all records in a single query.
-      def update(id, attributes)
+      def update(id = :all, attributes)
         if id.is_a?(Array)
           id.map { |one_id| find(one_id) }.each_with_index { |object, idx|
             object.update(attributes[idx])
           }
+        elsif id == :all
+          all.each { |record| record.update(attributes) }
         else
           if ActiveRecord::Base === id
             raise ArgumentError,
@@ -140,7 +142,7 @@ module ActiveRecord
         end
       end
 
-      # Deletes the row with a primary key matching the +id+ argument, using a
+      # Deletes the row with a primary key matching the +id+ argument, using an
       # SQL +DELETE+ statement, and returns the number of rows deleted. Active
       # Record objects are not instantiated, so the object's callbacks are not
       # executed, including any <tt>:dependent</tt> association options.
@@ -209,7 +211,7 @@ module ActiveRecord
         # new instance of the class. Accepts only keys as strings.
         def instantiate_instance_of(klass, attributes, column_types = {}, &block)
           attributes = klass.attributes_builder.build_from_database(attributes, column_types)
-          klass.allocate.init_from_db(attributes, &block)
+          klass.allocate.init_with_attributes(attributes, &block)
         end
 
         # Called by +instantiate+ to decide which class to use for a new
@@ -434,7 +436,7 @@ module ActiveRecord
     end
 
     alias update_attributes update
-    deprecate :update_attributes
+    deprecate update_attributes: "please, use update instead"
 
     # Updates its receiver just like #update but calls #save! instead
     # of +save+, so an exception is raised if the record is invalid and saving will fail.
@@ -448,7 +450,7 @@ module ActiveRecord
     end
 
     alias update_attributes! update!
-    deprecate :update_attributes!
+    deprecate update_attributes!: "please, use update! instead"
 
     # Equivalent to <code>update_columns(name => value)</code>.
     def update_column(name, value)
@@ -479,14 +481,15 @@ module ActiveRecord
         verify_readonly_attribute(key.to_s)
       end
 
+      id_in_database = self.id_in_database
+      attributes.each do |k, v|
+        write_attribute_without_type_cast(k, v)
+      end
+
       affected_rows = self.class._update_record(
         attributes,
         self.class.primary_key => id_in_database
       )
-
-      attributes.each do |k, v|
-        write_attribute_without_type_cast(k, v)
-      end
 
       affected_rows == 1
     end
@@ -758,6 +761,8 @@ module ActiveRecord
       @_association_destroy_exception = nil
     end
 
+    # The name of the method used to touch a +belongs_to+ association when the
+    # +:touch+ option is used.
     def belongs_to_touch_method
       :touch
     end

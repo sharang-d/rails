@@ -14,6 +14,7 @@ require "models/person"
 require "models/computer"
 require "models/reply"
 require "models/company"
+require "models/contract"
 require "models/bird"
 require "models/car"
 require "models/engine"
@@ -290,7 +291,16 @@ class RelationTest < ActiveRecord::TestCase
       Topic.order(Arel.sql("title NULLS FIRST")).reverse_order
     end
     assert_raises(ActiveRecord::IrreversibleOrderError) do
+      Topic.order(Arel.sql("title  NULLS  FIRST")).reverse_order
+    end
+    assert_raises(ActiveRecord::IrreversibleOrderError) do
       Topic.order(Arel.sql("title nulls last")).reverse_order
+    end
+    assert_raises(ActiveRecord::IrreversibleOrderError) do
+      Topic.order(Arel.sql("title NULLS FIRST, author_name")).reverse_order
+    end
+    assert_raises(ActiveRecord::IrreversibleOrderError) do
+      Topic.order(Arel.sql("author_name, title nulls last")).reverse_order
     end
   end
 
@@ -478,21 +488,6 @@ class RelationTest < ActiveRecord::TestCase
     assert_nothing_raised { Topic.preload([]) }
     assert_nothing_raised { Topic.group([]) }
     assert_nothing_raised { Topic.reorder([]) }
-  end
-
-  def test_respond_to_delegates_to_arel
-    relation = Topic.all
-    fake_arel = Struct.new(:responds) {
-      def respond_to?(method, access = false)
-        responds << [method, access]
-      end
-    }.new []
-
-    relation.extend(Module.new { attr_accessor :arel })
-    relation.arel = fake_arel
-
-    relation.respond_to?(:matching_attributes)
-    assert_equal [:matching_attributes, false], fake_arel.responds.first
   end
 
   def test_respond_to_dynamic_finders
@@ -1181,8 +1176,23 @@ class RelationTest < ActiveRecord::TestCase
     assert_equal "green", parrot.color
   end
 
+  def test_first_or_create_with_after_initialize
+    Bird.create!(color: "yellow", name: "canary")
+    parrot = assert_deprecated do
+      Bird.where(color: "green").first_or_create do |bird|
+        bird.name = "parrot"
+        bird.enable_count = true
+      end
+    end
+    assert_equal 0, parrot.total_count
+  end
+
   def test_first_or_create_with_block
-    parrot = Bird.where(color: "green").first_or_create { |bird| bird.name = "parrot" }
+    Bird.create!(color: "yellow", name: "canary")
+    parrot = Bird.where(color: "green").first_or_create do |bird|
+      bird.name = "parrot"
+      assert_deprecated { assert_equal 0, Bird.count }
+    end
     assert_kind_of Bird, parrot
     assert_predicate parrot, :persisted?
     assert_equal "green", parrot.color
@@ -1223,8 +1233,23 @@ class RelationTest < ActiveRecord::TestCase
     assert_raises(ActiveRecord::RecordInvalid) { Bird.where(color: "green").first_or_create! }
   end
 
+  def test_first_or_create_bang_with_after_initialize
+    Bird.create!(color: "yellow", name: "canary")
+    parrot = assert_deprecated do
+      Bird.where(color: "green").first_or_create! do |bird|
+        bird.name = "parrot"
+        bird.enable_count = true
+      end
+    end
+    assert_equal 0, parrot.total_count
+  end
+
   def test_first_or_create_bang_with_valid_block
-    parrot = Bird.where(color: "green").first_or_create! { |bird| bird.name = "parrot" }
+    Bird.create!(color: "yellow", name: "canary")
+    parrot = Bird.where(color: "green").first_or_create! do |bird|
+      bird.name = "parrot"
+      assert_deprecated { assert_equal 0, Bird.count }
+    end
     assert_kind_of Bird, parrot
     assert_predicate parrot, :persisted?
     assert_equal "green", parrot.color
@@ -1273,8 +1298,23 @@ class RelationTest < ActiveRecord::TestCase
     assert_equal "green", parrot.color
   end
 
+  def test_first_or_initialize_with_after_initialize
+    Bird.create!(color: "yellow", name: "canary")
+    parrot = assert_deprecated do
+      Bird.where(color: "green").first_or_initialize do |bird|
+        bird.name = "parrot"
+        bird.enable_count = true
+      end
+    end
+    assert_equal 0, parrot.total_count
+  end
+
   def test_first_or_initialize_with_block
-    parrot = Bird.where(color: "green").first_or_initialize { |bird| bird.name = "parrot" }
+    Bird.create!(color: "yellow", name: "canary")
+    parrot = Bird.where(color: "green").first_or_initialize do |bird|
+      bird.name = "parrot"
+      assert_deprecated { assert_equal 0, Bird.count }
+    end
     assert_kind_of Bird, parrot
     assert_not_predicate parrot, :persisted?
     assert_predicate parrot, :valid?
@@ -1315,6 +1355,13 @@ class RelationTest < ActiveRecord::TestCase
     assert_not_equal subscriber, Subscriber.create_or_find_by(nick: "cat")
   end
 
+  def test_create_or_find_by_should_not_raise_due_to_validation_errors
+    assert_nothing_raised do
+      bird = Bird.create_or_find_by(color: "green")
+      assert_predicate bird, :invalid?
+    end
+  end
+
   def test_create_or_find_by_with_non_unique_attributes
     Subscriber.create!(nick: "bob", name: "the builder")
 
@@ -1331,6 +1378,38 @@ class RelationTest < ActiveRecord::TestCase
     Subscriber.transaction do
       assert_equal subscriber, Subscriber.create_or_find_by(nick: "bob")
       assert_not_equal subscriber, Subscriber.create_or_find_by(nick: "cat")
+    end
+  end
+
+  def test_create_or_find_by_with_bang
+    assert_nil Subscriber.find_by(nick: "bob")
+
+    subscriber = Subscriber.create!(nick: "bob")
+
+    assert_equal subscriber, Subscriber.create_or_find_by!(nick: "bob")
+    assert_not_equal subscriber, Subscriber.create_or_find_by!(nick: "cat")
+  end
+
+  def test_create_or_find_by_with_bang_should_raise_due_to_validation_errors
+    assert_raises(ActiveRecord::RecordInvalid) { Bird.create_or_find_by!(color: "green") }
+  end
+
+  def test_create_or_find_by_with_bang_with_non_unique_attributes
+    Subscriber.create!(nick: "bob", name: "the builder")
+
+    assert_raises(ActiveRecord::RecordNotFound) do
+      Subscriber.create_or_find_by!(nick: "bob", name: "the cat")
+    end
+  end
+
+  def test_create_or_find_by_with_bang_within_transaction
+    assert_nil Subscriber.find_by(nick: "bob")
+
+    subscriber = Subscriber.create!(nick: "bob")
+
+    Subscriber.transaction do
+      assert_equal subscriber, Subscriber.create_or_find_by!(nick: "bob")
+      assert_not_equal subscriber, Subscriber.create_or_find_by!(nick: "cat")
     end
   end
 
@@ -1776,6 +1855,19 @@ class RelationTest < ActiveRecord::TestCase
     assert_equal [1, 1, 1], posts.map(&:author_address_id)
   end
 
+  test "joins with select custom attribute" do
+    contract = Company.create!(name: "test").contracts.create!
+    company = Company.joins(:contracts).select(:id, :metadata).find(contract.company_id)
+    assert_equal contract.metadata, company.metadata
+  end
+
+  test "joins with order by custom attribute" do
+    companies = Company.create!([{ name: "test1" }, { name: "test2" }])
+    companies.each { |company| company.contracts.create! }
+    assert_equal companies, Company.joins(:contracts).order(:metadata)
+    assert_equal companies.reverse, Company.joins(:contracts).order(metadata: :desc)
+  end
+
   test "delegations do not leak to other classes" do
     Topic.all.by_lifo
     assert Topic.all.class.method_defined?(:by_lifo)
@@ -1810,6 +1902,16 @@ class RelationTest < ActiveRecord::TestCase
 
   def test_relation_join_method
     assert_equal "Thank you for the welcome,Thank you again for the welcome", Post.first.comments.join(",")
+  end
+
+  def test_relation_with_private_kernel_method
+    accounts = Account.all
+    assert_equal [accounts(:signals37)], accounts.open
+    assert_equal [accounts(:signals37)], accounts.available
+
+    sub_accounts = SubAccount.all
+    assert_equal [accounts(:signals37)], sub_accounts.open
+    assert_equal [accounts(:signals37)], sub_accounts.available
   end
 
   test "#skip_query_cache!" do

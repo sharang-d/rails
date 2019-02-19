@@ -403,12 +403,6 @@ module Rails
               define_method(:railtie_helpers_paths) { railtie.helpers_paths }
             end
 
-            unless mod.respond_to?(:railtie_include_helpers)
-              define_method(:railtie_include_helpers) { |klass, include_path_helpers|
-                railtie.routes.include_helpers(klass, include_path_helpers)
-              }
-            end
-
             unless mod.respond_to?(:railtie_routes_url_helpers)
               define_method(:railtie_routes_url_helpers) { |include_path_helpers = true| railtie.routes.url_helpers(include_path_helpers) }
             end
@@ -478,15 +472,10 @@ module Rails
     # Eager load the application by loading all ruby
     # files inside eager_load paths.
     def eager_load!
-      config.eager_load_paths.each do |load_path|
-        if File.file?(load_path)
-          require_dependency load_path
-        else
-          matcher = /\A#{Regexp.escape(load_path.to_s)}\/(.*)\.rb\Z/
-          Dir.glob("#{load_path}/**/*.rb").sort.each do |file|
-            require_dependency file.sub(matcher, '\1')
-          end
-        end
+      if Rails.autoloaders.zeitwerk_enabled?
+        eager_load_with_zeitwerk!
+      else
+        eager_load_with_dependencies!
       end
     end
 
@@ -558,7 +547,7 @@ module Rails
     # Blog::Engine.load_seed
     def load_seed
       seed_file = paths["db/seeds.rb"].existent.first
-      load(seed_file) if seed_file
+      with_inline_jobs { load(seed_file) } if seed_file
     end
 
     # Add configured load paths to Ruby's load path, and remove duplicate entries.
@@ -662,9 +651,37 @@ module Rails
 
     private
 
+      def eager_load_with_zeitwerk!
+        (config.eager_load_paths - Zeitwerk::Loader.all_dirs).each do |path|
+          Dir.glob("#{path}/**/*.rb").sort.each { |file| require file }
+        end
+      end
+
+      def eager_load_with_dependencies!
+        config.eager_load_paths.each do |load_path|
+          # Starts after load_path plus a slash, ends before ".rb".
+          relname_range = (load_path.to_s.length + 1)...-3
+          Dir.glob("#{load_path}/**/*.rb").sort.each do |file|
+            require_dependency file[relname_range]
+          end
+        end
+      end
+
       def load_config_initializer(initializer) # :doc:
         ActiveSupport::Notifications.instrument("load_config_initializer.railties", initializer: initializer) do
           load(initializer)
+        end
+      end
+
+      def with_inline_jobs
+        queue_adapter = config.active_job.queue_adapter
+        ActiveSupport.on_load(:active_job) do
+          self.queue_adapter = :inline
+        end
+        yield
+      ensure
+        ActiveSupport.on_load(:active_job) do
+          self.queue_adapter = queue_adapter
         end
       end
 

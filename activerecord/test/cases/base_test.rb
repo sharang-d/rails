@@ -438,12 +438,6 @@ class BasicsTest < ActiveRecord::TestCase
     Post.reset_table_name
   end
 
-  if current_adapter?(:Mysql2Adapter)
-    def test_update_all_with_order_and_limit
-      assert_equal 1, Topic.limit(1).order("id DESC").update_all(content: "bulk updated!")
-    end
-  end
-
   def test_null_fields
     assert_nil Topic.find(1).parent_id
     assert_nil Topic.create("title" => "Hey you").parent_id
@@ -691,6 +685,9 @@ class BasicsTest < ActiveRecord::TestCase
       topic = Topic.find(1)
       topic.attributes = attributes
       assert_equal Time.local(2000, 1, 1, 5, 42, 0), topic.bonus_time
+
+      topic.save!
+      assert_equal topic, Topic.find_by(attributes)
     end
   end
 
@@ -1226,14 +1223,15 @@ class BasicsTest < ActiveRecord::TestCase
   end
 
   def test_attribute_names
-    assert_equal ["id", "type", "firm_id", "firm_name", "name", "client_of", "rating", "account_id", "description"],
-                 Company.attribute_names
+    expected = ["id", "type", "firm_id", "firm_name", "name", "client_of", "rating", "account_id", "description", "metadata"]
+    assert_equal expected, Company.attribute_names
   end
 
   def test_has_attribute
     assert Company.has_attribute?("id")
     assert Company.has_attribute?("type")
     assert Company.has_attribute?("name")
+    assert Company.has_attribute?("metadata")
     assert_not Company.has_attribute?("lastname")
     assert_not Company.has_attribute?("age")
   end
@@ -1447,6 +1445,14 @@ class BasicsTest < ActiveRecord::TestCase
     assert_not_respond_to developer, :first_name=
   end
 
+  test "when ignored attribute is loaded, cast type should be preferred over DB type" do
+    developer = AttributedDeveloper.create
+    developer.update_column :name, "name"
+
+    loaded_developer = AttributedDeveloper.where(id: developer.id).select("*").first
+    assert_equal "Developer: name", loaded_developer.name
+  end
+
   test "ignored columns not included in SELECT" do
     query = Developer.all.to_sql.downcase
 
@@ -1479,5 +1485,65 @@ class BasicsTest < ActiveRecord::TestCase
     assert_equal ["staging", "production"], ActiveRecord::Base.protected_environments
   ensure
     ActiveRecord::Base.protected_environments = previous_protected_environments
+  end
+
+  test "creating a record raises if preventing writes" do
+    error = assert_raises ActiveRecord::ReadOnlyError do
+      ActiveRecord::Base.connection.while_preventing_writes do
+        Bird.create! name: "Bluejay"
+      end
+    end
+
+    assert_match %r/\AWrite query attempted while in readonly mode: INSERT /, error.message
+  end
+
+  test "updating a record raises if preventing writes" do
+    bird = Bird.create! name: "Bluejay"
+
+    error = assert_raises ActiveRecord::ReadOnlyError do
+      ActiveRecord::Base.connection.while_preventing_writes do
+        bird.update! name: "Robin"
+      end
+    end
+
+    assert_match %r/\AWrite query attempted while in readonly mode: UPDATE /, error.message
+  end
+
+  test "deleting a record raises if preventing writes" do
+    bird = Bird.create! name: "Bluejay"
+
+    error = assert_raises ActiveRecord::ReadOnlyError do
+      ActiveRecord::Base.connection.while_preventing_writes do
+        bird.destroy!
+      end
+    end
+
+    assert_match %r/\AWrite query attempted while in readonly mode: DELETE /, error.message
+  end
+
+  test "selecting a record does not raise if preventing writes" do
+    bird = Bird.create! name: "Bluejay"
+
+    ActiveRecord::Base.connection.while_preventing_writes do
+      assert_equal bird, Bird.where(name: "Bluejay").first
+    end
+  end
+
+  test "an explain query does not raise if preventing writes" do
+    Bird.create!(name: "Bluejay")
+
+    ActiveRecord::Base.connection.while_preventing_writes do
+      assert_queries(2) { Bird.where(name: "Bluejay").explain }
+    end
+  end
+
+  test "an empty transaction does not raise if preventing writes" do
+    ActiveRecord::Base.connection.while_preventing_writes do
+      assert_queries(2, ignore_none: true) do
+        Bird.transaction do
+          ActiveRecord::Base.connection.materialize_transactions
+        end
+      end
+    end
   end
 end

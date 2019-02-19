@@ -352,7 +352,7 @@ module ActionController
     # the same way as <tt>Hash#each_value</tt>.
     def each_value(&block)
       @parameters.each_pair do |key, value|
-        yield [convert_hashes_to_parameters(key, value)]
+        yield convert_hashes_to_parameters(key, value)
       end
     end
 
@@ -795,7 +795,7 @@ module ActionController
         @permitted  = coder.map["ivars"][:@permitted]
       when "!ruby/object:ActionController::Parameters"
         # YAML's Object format. Only needed because of the format
-        # backwardscompability above, otherwise equivalent to YAML's initialization.
+        # backwards compatibility above, otherwise equivalent to YAML's initialization.
         @parameters, @permitted = coder.map["parameters"], coder.map["permitted"]
       end
     end

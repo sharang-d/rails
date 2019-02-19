@@ -538,7 +538,8 @@ end
 
 If you want to be sure that an association is present, you'll need to test
 whether the associated object itself is present, and not the foreign key used
-to map the association.
+to map the association. This way, it is not only checked that the foreign key
+is not empty but also that the referenced object exists.
 
 ```ruby
 class LineItem < ApplicationRecord
@@ -933,7 +934,7 @@ end
 
 ### Using a Proc with `:if` and `:unless`
 
-Finally, it's possible to associate `:if` and `:unless` with a `Proc` object
+It is possible to associate `:if` and `:unless` with a `Proc` object
 which will be called. Using a `Proc` object gives you the ability to write an
 inline condition instead of a separate method. This option is best suited for
 one-liners.

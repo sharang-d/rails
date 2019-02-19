@@ -218,8 +218,8 @@ class CalculationsTest < ActiveRecord::TestCase
       Account.select("credit_limit, firm_name").count
     }
 
-    assert_match %r{accounts}i, e.message
-    assert_match "credit_limit, firm_name", e.message
+    assert_match %r{accounts}i, e.sql
+    assert_match "credit_limit, firm_name", e.sql
   end
 
   def test_apply_distinct_in_count
@@ -428,6 +428,8 @@ class CalculationsTest < ActiveRecord::TestCase
   def test_should_count_selected_field_with_include
     assert_equal 6, Account.includes(:firm).distinct.count
     assert_equal 4, Account.includes(:firm).distinct.select(:credit_limit).count
+    assert_equal 4, Account.includes(:firm).distinct.count("DISTINCT credit_limit")
+    assert_equal 4, Account.includes(:firm).distinct.count("DISTINCT(credit_limit)")
   end
 
   def test_should_not_perform_joined_include_by_default
@@ -688,8 +690,9 @@ class CalculationsTest < ActiveRecord::TestCase
   end
 
   def test_pluck_not_auto_table_name_prefix_if_column_joined
-    Company.create!(name: "test", contracts: [Contract.new(developer_id: 7)])
-    assert_equal [7], Company.joins(:contracts).pluck(:developer_id)
+    company = Company.create!(name: "test", contracts: [Contract.new(developer_id: 7)])
+    metadata = company.contracts.first.metadata
+    assert_equal [metadata], Company.joins(:contracts).pluck(:metadata)
   end
 
   def test_pluck_with_selection_clause
@@ -715,6 +718,10 @@ class CalculationsTest < ActiveRecord::TestCase
   def test_pluck_with_includes_offset
     assert_equal [5], Topic.includes(:replies).order(:id).offset(4).pluck(:id)
     assert_equal [], Topic.includes(:replies).order(:id).offset(5).pluck(:id)
+  end
+
+  def test_pluck_with_join
+    assert_equal [[2, 2], [4, 4]], Reply.includes(:topic).pluck(:id, :"topics.id")
   end
 
   def test_group_by_with_limit
@@ -832,13 +839,13 @@ class CalculationsTest < ActiveRecord::TestCase
   def test_pick_one
     assert_equal "The First Topic", Topic.order(:id).pick(:heading)
     assert_nil Topic.none.pick(:heading)
-    assert_nil Topic.where("1=0").pick(:heading)
+    assert_nil Topic.where(id: 9999999999999999999).pick(:heading)
   end
 
   def test_pick_two
     assert_equal ["David", "david@loudthinking.com"], Topic.order(:id).pick(:author_name, :author_email_address)
     assert_nil Topic.none.pick(:author_name, :author_email_address)
-    assert_nil Topic.where("1=0").pick(:author_name, :author_email_address)
+    assert_nil Topic.where(id: 9999999999999999999).pick(:author_name, :author_email_address)
   end
 
   def test_pick_delegate_to_all
@@ -911,15 +918,15 @@ class CalculationsTest < ActiveRecord::TestCase
     assert_equal({ "proposed" => 2, "published" => 2 }, Book.group(:status).count)
   end
 
-  def test_deprecate_count_with_block_and_column_name
-    assert_deprecated do
-      assert_equal 6, Account.count(:firm_id) { true }
+  def test_count_with_block_and_column_name_raises_an_error
+    assert_raises(ArgumentError) do
+      Account.count(:firm_id) { true }
     end
   end
 
-  def test_deprecate_sum_with_block_and_column_name
-    assert_deprecated do
-      assert_equal 6, Account.sum(:firm_id) { 1 }
+  def test_sum_with_block_and_column_name_raises_an_error
+    assert_raises(ArgumentError) do
+      Account.sum(:firm_id) { 1 }
     end
   end
 

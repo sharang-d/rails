@@ -260,7 +260,7 @@ In each of these cases, the named routes remain the same as if you did not use `
 | PATCH/PUT | /admin/articles/:id      | articles#update      | article_path(:id)      |
 | DELETE    | /admin/articles/:id      | articles#destroy     | article_path(:id)      |
 
-TIP: _If you need to use a different controller namespace inside a `namespace` block you can specify an absolute controller path, e.g: `get '/foo' => '/foo#index'`._
+TIP: _If you need to use a different controller namespace inside a `namespace` block you can specify an absolute controller path, e.g: `get '/foo', to: '/foo#index'`._
 
 ### Nested Resources
 
@@ -519,7 +519,7 @@ resources :photos do
 end
 ```
 
-You can leave out the `:on` option, this will create the same member route except that the resource id value will be available in `params[:photo_id]` instead of `params[:id]`.
+You can leave out the `:on` option, this will create the same member route except that the resource id value will be available in `params[:photo_id]` instead of `params[:id]`. Route helpers will also be renamed from `preview_photo_url` and `preview_photo_path` to `photo_preview_url` and `photo_preview_path`.
 
 #### Adding Collection Routes
 
@@ -542,6 +542,8 @@ resources :photos do
   get 'search', on: :collection
 end
 ```
+
+NOTE: If you're defining additional resource routes with a symbol as the first positional argument, be mindful that it is not equivalent to using a string. Symbols infer controller actions while strings infer paths.
 
 #### Adding Routes for Additional New Actions
 
