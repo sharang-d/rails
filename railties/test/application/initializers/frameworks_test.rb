@@ -61,7 +61,7 @@ module ApplicationTests
       assert_equal "https", ActionMailer::Base.default_url_options[:protocol]
     end
 
-    test "includes url helpers as action methods" do
+    test "includes URL helpers as action methods" do
       app_file "config/routes.rb", <<-RUBY
         Rails.application.routes.draw do
           get "/foo", :to => lambda { |env| [200, {}, []] }, :as => :foo
